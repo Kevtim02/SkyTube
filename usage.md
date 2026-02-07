@@ -1,6 +1,6 @@
-# YouTube to Bluesky Auto-Poster
+# SkyTube — YouTube to Bluesky Auto-Poster
 
-This Python script monitors a YouTube channel's RSS feed for new videos and automatically posts about them on Bluesky with a rich preview card including the video thumbnail.
+This Python script monitors a YouTube channel for new videos (via RSS feed or YouTube Data API) and automatically posts about them on Bluesky with a rich preview card including the video thumbnail.
 
 ## Table of Contents
 - [Requirements](#requirements)
@@ -8,9 +8,12 @@ This Python script monitors a YouTube channel's RSS feed for new videos and auto
 - [Installation](#installation)
 - [Usage](#usage)
   - [Normal Mode](#normal-mode)
+  - [YouTube API Mode](#youtube-api-mode)
   - [Database Build Mode](#database-build-mode)
+  - [File Logging](#file-logging)
 - [Configuration](#configuration)
   - [Configuration Options](#configuration-options)
+  - [YouTube API Configuration (Optional)](#youtube-api-configuration-optional)
   - [Finding Your YouTube Channel ID](#finding-your-youtube-channel-id)
   - [Creating a Bluesky App Password](#creating-a-bluesky-app-password)
 - [Command Line Arguments](#command-line-arguments)
@@ -23,29 +26,32 @@ This Python script monitors a YouTube channel's RSS feed for new videos and auto
 - [License](#license)
 
 ## Requirements
-- Python 3.7 or higher
+- Python 3.9 or higher
 - A YouTube channel
 - A Bluesky account
+- *(Optional)* A YouTube Data API key if using `--use-api` mode
 
 ## Features
-- **Automatic Monitoring**: Continuously monitors your YouTube channel's RSS feed for new videos.
+- **Automatic Monitoring**: Continuously monitors your YouTube channel for new videos.
+- **Dual Video Source**: Fetch videos via RSS feed (default) or the YouTube Data API (`--use-api`) for more reliable results.
 - **Rich Preview Cards**: Posts to Bluesky include a link preview card with the video thumbnail, title, and description.
-- **Thumbnail Support**: Automatically downloads and uploads video thumbnails in the highest available quality.
+- **Thumbnail Support**: Automatically downloads and uploads video thumbnails in the highest available quality (maxres → hq → mq).
 - **Database Persistence**: Tracks posted videos in a JSON file to prevent duplicate posts across restarts.
 - **Database Build Mode**: Register existing videos without posting, so only future uploads get announced.
+- **File Logging**: Optional persistent log file (`skytube.log`) via the `--log` flag for diagnostics and record keeping.
 - **YAML Configuration**: Easy-to-edit configuration file with helpful comments.
-- **Colored Output**: Color-coded terminal output for errors (red), success (green), and warnings (yellow).
+- **Colored Output**: Color-coded terminal output for errors (red), success (green), warnings (yellow), and info (blue/cyan).
 - **Interactive Setup**: Prompts to create an example config file if none exists.
-- **Customizable Post Template**: Configure your post message format with template variables.
+- **Customizable Post Template**: Configure your post message format with `{title}` and `{url}` template variables.
 - **Configurable Check Interval**: Set how often the script checks for new videos.
-- **Error Recovery**: Continues running even if individual checks fail.
+- **Error Recovery**: Continues running even if individual checks fail, with detailed error hints.
 
 ## Installation
 
 1. **Clone or download the script**:
    ```bash
-   git clone https://github.com/yourusername/youtube-to-bluesky.git
-   cd youtube-to-bluesky
+   git clone https://github.com/yourusername/skytube.git
+   cd skytube
    ```
 
 2. **Install the required Python packages**:
@@ -55,7 +61,7 @@ This Python script monitors a YouTube channel's RSS feed for new videos and auto
 
 3. **Run the script once to generate a config file**:
    ```bash
-   python youtube_to_bluesky.py
+   python skytube.py
    ```
    When prompted, type `yes` to create an example configuration file.
 
@@ -70,26 +76,53 @@ This Python script monitors a YouTube channel's RSS feed for new videos and auto
 To start monitoring your YouTube channel and automatically post new videos to Bluesky:
 
 ```bash
-python youtube_to_bluesky.py
+python skytube.py
 ```
 
 With a custom config file location:
 ```bash
-python youtube_to_bluesky.py --config /path/to/config.yaml
+python skytube.py --config /path/to/config.yaml
 ```
+
+### YouTube API Mode
+Use the YouTube Data API instead of RSS for more reliable video fetching:
+
+```bash
+python skytube.py --use-api
+```
+
+This mode requires `youtube_api_key` to be set in your config file. The API is more reliable than RSS and supports fetching more than the 15 most recent videos.
 
 ### Database Build Mode
 To register all existing videos without posting (useful for initial setup):
 
 ```bash
-python youtube_to_bluesky.py --build-db
+python skytube.py --build-db
 ```
 
 This will:
-- Fetch all videos currently in your YouTube RSS feed
+- Fetch all videos currently in your YouTube feed (RSS or API)
 - Add them to the seen videos database
 - **Not post anything to Bluesky**
 - Allow you to run the script normally afterward, posting only truly new videos
+
+You can also combine it with other flags:
+```bash
+python skytube.py --use-api --build-db
+```
+
+### File Logging
+Enable persistent file logging to `skytube.log`:
+
+```bash
+python skytube.py --log
+```
+
+The log file is written in append mode so logs persist across restarts. All console output (with timestamps and log levels) is mirrored to the file. Combine with other flags as needed:
+
+```bash
+python skytube.py --log --use-api
+```
 
 ## Configuration
 
@@ -109,6 +142,7 @@ bluesky_password: "xxxx-xxxx-xxxx-xxxx"
 
 # The message template for your Bluesky post
 # {title} will be replaced with the video title
+# {url} will be replaced with the video URL
 post_template: "🎬 New video: {title}"
 
 # How often to check for new videos (in seconds)
@@ -126,9 +160,34 @@ seen_videos_file: "youtube_bluesky_seen.json"
 | `youtube_channel_id` | Your YouTube channel ID (required) | - |
 | `bluesky_handle` | Your Bluesky handle (required) | - |
 | `bluesky_password` | Your Bluesky app password (required) | - |
-| `post_template` | Template for the post text. Use `{title}` for video title | `🎬 New video: {title}` |
+| `post_template` | Template for the post text. Use `{title}` for video title and `{url}` for video URL | `🎬 New video: {title}` |
 | `check_interval_seconds` | How often to check for new videos (in seconds) | `600` |
 | `seen_videos_file` | Path to the JSON file storing seen video IDs | `youtube_bluesky_seen.json` |
+
+### YouTube API Configuration (Optional)
+
+If you want to use the YouTube Data API instead of RSS, add these to your `config.yaml`:
+
+```yaml
+# YouTube Data API key
+# Get one from: https://console.cloud.google.com/apis/credentials
+youtube_api_key: "YOUR_YOUTUBE_API_KEY_HERE"
+
+# Maximum number of videos to fetch per API request (1-50)
+# Only used when --use-api is enabled
+api_max_results: 15
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `youtube_api_key` | YouTube Data API v3 key (required for `--use-api`) | - |
+| `api_max_results` | Maximum number of videos to fetch per check (positive integer) | `15` |
+
+To obtain a YouTube API key:
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create a new project (or select an existing one)
+3. Enable the **YouTube Data API v3**
+4. Create an API key under **Credentials**
 
 ### Finding Your YouTube Channel ID
 
@@ -148,7 +207,7 @@ seen_videos_file: "youtube_bluesky_seen.json"
 4. Give it a name (e.g., "YouTube Poster")
 5. Copy the generated password and paste it in your config file
 
-> ⚠️ **Security Tip**: Use an App Password instead of your main password. App passwords can be revoked individually if compromised.
+> **Security Tip**: Use an App Password instead of your main password. App passwords can be revoked individually if compromised.
 
 ## Command Line Arguments
 
@@ -156,22 +215,39 @@ seen_videos_file: "youtube_bluesky_seen.json"
 |----------|-------|-------------|
 | `--config` | `-c` | Path to the configuration YAML file (default: `config.yaml`) |
 | `--build-db` | - | Build/rebuild the database of seen videos without posting |
+| `--use-api` | - | Use YouTube Data API instead of RSS feed (requires `youtube_api_key` in config) |
+| `--log` | - | Enable continuous file logging to `skytube.log` in the current directory |
 | `--help` | `-h` | Show help message and exit |
 
 ### Examples
 
 ```bash
 # Use default config.yaml in current directory
-python youtube_to_bluesky.py
+python skytube.py
 
 # Use a specific config file
-python youtube_to_bluesky.py --config /home/user/myconfig.yaml
+python skytube.py --config /home/user/myconfig.yaml
+
+# Use YouTube Data API instead of RSS
+python skytube.py --use-api
 
 # Build database without posting
-python youtube_to_bluesky.py --build-db
+python skytube.py --build-db
+
+# Build database using API
+python skytube.py --use-api --build-db
 
 # Build database with specific config
-python youtube_to_bluesky.py --config /home/user/myconfig.yaml --build-db
+python skytube.py --config /home/user/myconfig.yaml --build-db
+
+# Enable file logging
+python skytube.py --log
+
+# File logging with API mode
+python skytube.py --log --use-api
+
+# All flags combined
+python skytube.py --log --use-api --build-db
 ```
 
 ## Script Details
@@ -180,32 +256,36 @@ python youtube_to_bluesky.py --config /home/user/myconfig.yaml --build-db
 
 1. **Startup**: The script loads configuration from the YAML file and validates required settings.
 
-2. **Feed Monitoring**: Every `check_interval_seconds`, the script fetches the YouTube channel's RSS feed.
+2. **Feed Monitoring**: Every `check_interval_seconds`, the script fetches the latest videos from the YouTube channel using either the RSS feed (default) or the YouTube Data API (`--use-api`).
 
-3. **New Video Detection**: Each video ID is compared against the local database of seen videos.
+3. **Duplicate Detection**: Each video's ID is compared against the stored database (`seen_videos_file`). Only new videos trigger a post.
 
 4. **Posting to Bluesky**: For new videos, the script:
-   - Downloads the video thumbnail (tries multiple quality levels)
+   - Downloads the video thumbnail (tries maxres, then hq, then mq quality)
    - Uploads the thumbnail to Bluesky
    - Creates a post with an embed card containing the video link, title, and thumbnail
 
-5. **Database Update**: Successfully posted videos are added to the seen videos database.
+5. **Database Update**: Successfully posted videos are added to the seen videos database and saved immediately.
+
+6. **Sleep**: The script waits for the configured interval before checking again.
 
 ### File Structure
 
 ```
-youtube-to-bluesky/
-├── youtube_to_bluesky.py      # Main script
-├── config.yaml                 # Your configuration (create this)
+skytube/
+├── skytube.py                  # Main script
+├── config.yaml                 # Your configuration (created on first run)
 ├── youtube_bluesky_seen.json   # Auto-generated database of posted videos
-└── README.md                   # This file
+├── skytube.log                 # Log file (created when using --log)
+├── usage.md                    # This file
+└── README.md                   # Project README
 ```
 
 ## Running as a Service
 
 ### Using systemd (Linux)
 
-Create a service file at `/etc/systemd/system/youtube-bluesky.service`:
+Create a service file at `/etc/systemd/system/skytube.service`:
 
 ```ini
 [Unit]
@@ -215,8 +295,8 @@ After=network.target
 [Service]
 Type=simple
 User=yourusername
-WorkingDirectory=/path/to/script
-ExecStart=/usr/bin/python3 /path/to/script/youtube_to_bluesky.py --config /path/to/config.yaml
+WorkingDirectory=/path/to/skytube
+ExecStart=/usr/bin/python3 /path/to/skytube/skytube.py --config /path/to/config.yaml
 Restart=always
 RestartSec=10
 
@@ -228,33 +308,35 @@ Enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable youtube-bluesky
-sudo systemctl start youtube-bluesky
+sudo systemctl enable skytube
+sudo systemctl start skytube
 ```
 
 Check the status:
 
 ```bash
-sudo systemctl status youtube-bluesky
+sudo systemctl status skytube
 ```
 
 View logs:
 
 ```bash
-journalctl -u youtube-bluesky -f
+journalctl -u skytube -f
 ```
+
+> **Tip**: You can also add `--log` to the `ExecStart` line to write persistent logs to `skytube.log` in addition to journald.
 
 ### Using screen (Linux)
 
 ```bash
-screen -S youtube-bluesky
-python youtube_to_bluesky.py
+screen -S skytube
+python skytube.py
 # Press Ctrl+A, then D to detach
 ```
 
 Reattach with:
 ```bash
-screen -r youtube-bluesky
+screen -r skytube
 ```
 
 ## Troubleshooting
@@ -270,12 +352,26 @@ screen -r youtube-bluesky
 | Duplicate posts | Delete `youtube_bluesky_seen.json` and run `--build-db` to rebuild the database |
 | Thumbnail not showing | Some videos may not have high-res thumbnails; the script falls back to lower quality |
 
+### YouTube API Errors
+
+| HTTP Status | Cause | Solution |
+|-------------|-------|----------|
+| 403 | Invalid API key or quota exceeded | Verify your API key is valid and YouTube Data API v3 is enabled |
+| 404 | Playlist/channel not found | Verify your channel ID is correct (must start with `UC`) |
+| 429 | Rate limit hit | Wait and try again; the script will return partial results if available |
+
 ### Checking Logs
 
-The script outputs timestamped logs to the console. For persistent logging with systemd:
+The script outputs timestamped, color-coded logs to the console. For persistent file logging, use the `--log` flag:
 
 ```bash
-journalctl -u youtube-bluesky --since "1 hour ago"
+python skytube.py --log
+```
+
+This writes all output to `skytube.log` in the current working directory. If running as a systemd service, you can also check journald:
+
+```bash
+journalctl -u skytube --since "1 hour ago"
 ```
 
 ## Contributing
