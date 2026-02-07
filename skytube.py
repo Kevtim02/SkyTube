@@ -38,6 +38,7 @@ import argparse        # For parsing command line arguments (built-in)
 import yaml            # For parsing YAML config files (pip install pyyaml)
 import sys             # For exiting the script with exit codes
 import logging         # For structured logging to console and file (built-in)
+from logging.handlers import RotatingFileHandler  # For automatic log rotation
 import traceback       # For detailed exception tracebacks in logs (built-in)
 from datetime import datetime  # For timestamps in logs
 
@@ -86,14 +87,18 @@ file_logger = None
 # The log file name, placed in the same directory as the running script
 LOG_FILE_NAME = "skytube.log"
 
+# Maximum log file size before rotation (10 MB)
+MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024
+
 
 def setup_file_logging():
     """
     Configures the file logger to write continuously to skytube.log.
     
     The log file is created in the same directory the script runs in.
-    Uses a RotatingFileHandler-style approach via standard logging module
-    with append mode so logs persist across restarts.
+    Uses RotatingFileHandler which automatically clears the log file when
+    it reaches MAX_LOG_SIZE_BYTES (10 MB). When the limit is reached,
+    the log is cleared and writing continues from the beginning.
     
     Returns:
         A configured logging.Logger instance writing to skytube.log
@@ -112,9 +117,14 @@ def setup_file_logging():
         return logger
 
     try:
-        # Create a file handler that appends to the log file ("a" mode)
-        # This ensures logs are not lost between restarts
-        file_handler = logging.FileHandler(log_file_path, mode="a", encoding="utf-8")
+        # Create a rotating file handler that clears the log when it reaches 10 MB
+        # backupCount=0 means no backup files are kept - log is simply cleared
+        file_handler = RotatingFileHandler(
+            log_file_path, 
+            maxBytes=MAX_LOG_SIZE_BYTES, 
+            backupCount=0, 
+            encoding="utf-8"
+        )
         file_handler.setLevel(logging.DEBUG)
 
         # Define the log format to match the console output style
