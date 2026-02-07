@@ -3,3 +3,4 @@ YT BLSKY old.7z
 youtube_bluesky_seen.json
 AGENTS.md
 release/
+__pycache__/
