@@ -1,0 +1,29 @@
+# YouTube to Bluesky Auto-Poster Configuration
+# =============================================
+
+# Your YouTube channel ID (find it in the channel URL after /channel/)
+# Example: "UCxxxxxxxxxxxxxxxx"
+youtube_channel_id: "EXAMPLE"
+
+# Your Bluesky credentials
+# TIP: Use an "App Password" from Bluesky settings, not your main password!
+bluesky_handle: "EXAMPLE"
+bluesky_password: "EXAMPLE"
+
+# The message template for your Bluesky post
+# {title} will be replaced with the video title
+post_template: "🎬 Hey, Ich habe ein neues Video hochgeladen.\n👀 Schau es dir an!"
+
+# How often to check for new videos (in seconds)
+# 300 = 5 minutes, 600 = 10 minutes, 900 = 15 minutes
+check_interval_seconds: 30
+
+# File to store which videos we've already posted about
+# This prevents duplicate posts if the script restarts
+seen_videos_file: "./youtube_bluesky_seen.json"
+
+# YouTube API key (required for --use-api mode)
+youtube_api_key: "EXAMPPLE"
+
+# Maximum results per API request (optional, default: 15)
+api_max_results: 3
