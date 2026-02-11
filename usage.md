@@ -39,6 +39,7 @@ This Python script monitors a YouTube channel for new videos (via RSS feed or Yo
 - **Database Persistence**: Tracks posted videos in a JSON file to prevent duplicate posts across restarts.
 - **Database Build Mode**: Register existing videos without posting, so only future uploads get announced.
 - **File Logging**: Optional persistent log file (`skytube.log`) via the `--log` flag for diagnostics and record keeping.
+- **No Cache Mode**: Disable caching for API requests via `--no-cache` flag to get fresh data and bypass stale cached responses.
 - **YAML Configuration**: Easy-to-edit configuration file with helpful comments.
 - **Colored Output**: Color-coded terminal output for errors (red), success (green), warnings (yellow), and info (blue/cyan).
 - **Interactive Setup**: Prompts to create an example config file if none exists.
@@ -122,6 +123,23 @@ The log file is written in append mode so logs persist across restarts. All cons
 
 ```bash
 python skytube.py --log --use-api
+```
+
+### No Cache Mode
+Disable caching for YouTube API requests to get fresh data:
+
+```bash
+python skytube.py --use-api --no-cache
+```
+
+This adds cache-control headers and unique timestamps to API requests, preventing YouTube's servers from returning stale cached responses. Useful when:
+- The API returns the same videos for hours after a new video is published
+- You're experiencing delays in detecting new uploads
+- Running as a systemd service where the process stays active for long periods
+
+Combine with other flags:
+```bash
+python skytube.py --log --use-api --no-cache
 ```
 
 ## Configuration
@@ -217,6 +235,7 @@ To obtain a YouTube API key:
 | `--build-db` | - | Build/rebuild the database of seen videos without posting |
 | `--use-api` | - | Use YouTube Data API instead of RSS feed (requires `youtube_api_key` in config) |
 | `--log` | - | Enable continuous file logging to `skytube.log` in the current directory |
+| `--no-cache` | - | Disable caching for YouTube API requests (requires `--use-api`) |
 | `--help` | `-h` | Show help message and exit |
 
 ### Examples
@@ -248,6 +267,12 @@ python skytube.py --log --use-api
 
 # All flags combined
 python skytube.py --log --use-api --build-db
+
+# Disable API caching to get fresh data
+python skytube.py --use-api --no-cache
+
+# File logging with API mode and no cache
+python skytube.py --log --use-api --no-cache
 ```
 
 ## Script Details
@@ -351,6 +376,7 @@ screen -r skytube
 | "Error posting to Bluesky" | Check your Bluesky credentials; ensure you're using an App Password |
 | Duplicate posts | Delete `youtube_bluesky_seen.json` and run `--build-db` to rebuild the database |
 | Thumbnail not showing | Some videos may not have high-res thumbnails; the script falls back to lower quality |
+| Videos not detected for hours | YouTube API may be caching responses; use `--no-cache` flag with `--use-api` |
 
 ### YouTube API Errors
 

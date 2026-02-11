@@ -23,6 +23,10 @@ Usage:
     Enable continuous file logging:
         python youtube_to_bluesky.py --log
         python youtube_to_bluesky.py --log --use-api --build-db
+    
+    Disable API caching (force fresh data):
+        python youtube_to_bluesky.py --use-api --no-cache
+        python youtube_to_bluesky.py --log --use-api --no-cache
 """
 
 # ============================================================
@@ -242,6 +246,10 @@ config = {}
 # Global variable to track whether to use YouTube API
 # Set by command line argument --use-api
 use_youtube_api = False
+
+# Global variable to track whether to disable caching
+# Set by command line argument --no-cache
+no_cache = False
 
 
 # ============================================================
@@ -826,9 +834,22 @@ def get_youtube_feed_api():
 
             page_count += 1
             log_debug(f"API request page {page_count}: maxResults={per_page}, pageToken={next_page_token}")
-            
+
+            # Prepare headers and parameters for the API request
+            request_headers = {}
+
+            # Add cache-busting if --no-cache flag is enabled
+            if no_cache:
+                # Add cache-control headers to prevent caching
+                request_headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                request_headers["Pragma"] = "no-cache"
+                request_headers["Expires"] = "0"
+                # Add a unique timestamp parameter to bust caches
+                params["_nocache"] = str(int(time.time()))
+                log_debug(f"Cache-busting enabled: added timestamp {params['_nocache']}")
+
             # Make the API request
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, headers=request_headers, timeout=30)
 
             log_debug(f"API response status: {response.status_code}, content-length: {len(response.content)}")
             
@@ -1416,13 +1437,14 @@ def check_for_new_videos(seen_videos):
 def parse_arguments():
     """
     Parses command line arguments.
-    
+
     Supported arguments:
         --config, -c: Path to the configuration YAML file
         --build-db: Build the database without posting
         --use-api: Use YouTube Data API instead of RSS feed
         --log: Enable continuous file logging to skytube.log
-    
+        --no-cache: Disable caching for YouTube API requests
+
     Returns:
         The parsed arguments object (argparse.Namespace)
     """
@@ -1442,6 +1464,7 @@ Examples:
   python youtube_to_bluesky.py --config myconfig.yaml --build-db
   python youtube_to_bluesky.py --log                        # Enable file logging to skytube.log
   python youtube_to_bluesky.py --log --use-api              # File logging with API mode
+  python youtube_to_bluesky.py --use-api --no-cache         # Disable API caching (fresh data)
         """
     )
     
@@ -1480,6 +1503,16 @@ Examples:
         help="Enable continuous file logging to skytube.log in the current directory. "
              "All console output is also written to the log file with timestamps and levels."
     )
+
+    # --no-cache flag: disable caching for YouTube API requests
+    # This adds cache-busting headers and timestamps to API requests
+    # Useful when the API returns stale/cached data
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Disable caching for YouTube API requests by adding cache-control headers "
+             "and unique timestamps. Useful when the API returns stale data."
+    )
     
     # Parse and return the arguments
     return parser.parse_args()
@@ -1503,12 +1536,14 @@ def main():
     global config
     global use_youtube_api
     global file_logger
+    global no_cache
     
-    # Parse command line arguments (--config, --build-db, --use-api, --log)
+    # Parse command line arguments (--config, --build-db, --use-api, --log, --no-cache)
     args = parse_arguments()
     
-    # Set global flag for API usage
+    # Set global flags from command line arguments
     use_youtube_api = args.use_api
+    no_cache = args.no_cache
 
     # ==========================================
     # Set up file logging if --log flag was passed
@@ -1573,6 +1608,8 @@ def main():
         log_message("Video source: YouTube Data API", Colors.BLUE)
     else:
         log_message("Video source: RSS Feed", Colors.BLUE)
+    if no_cache:
+        log_message("Cache control: DISABLED (--no-cache)", Colors.YELLOW)
     log_message(f"Check interval: {config.get('check_interval_seconds', 600)} seconds")
     if file_logger:
         log_message(f"File logging: ENABLED ({LOG_FILE_NAME})", Colors.BLUE)

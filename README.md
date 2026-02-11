@@ -13,6 +13,7 @@ Automatically monitor your YouTube channel for new videos and post them to Blues
 - ⚙️ **Easy Configuration** - Simple YAML config file with helpful comments
 - 🛡️ **Database Build Mode** - Initialize without posting to avoid duplicate posts
 - 📝 **File Logging** - Optional persistent log file for diagnostics (`--log`)
+- 🚫 **No Cache Mode** - Bypass API caching to get fresh data (`--no-cache`)
 - 🎨 **Colored Output** - Clear, color-coded terminal output for easy monitoring
 
 ## Requirements
@@ -142,6 +143,19 @@ python skytube.py --log --use-api
 
 The log file is written in append mode, so logs persist across restarts.
 
+### No Cache Mode
+
+Disable caching for YouTube API requests to get fresh data (useful when running as a service):
+
+```bash
+python skytube.py --use-api --no-cache
+
+# Combine with other flags
+python skytube.py --log --use-api --no-cache
+```
+
+This adds cache-control headers and unique timestamps to each API request, preventing YouTube's servers from returning stale cached responses. Particularly useful when running as a systemd service where the process stays active for long periods.
+
 ## Command Line Options
 
 | Option | Short | Description |
@@ -150,6 +164,7 @@ The log file is written in append mode, so logs persist across restarts.
 | `--build-db` | | Build the database of seen videos without posting |
 | `--use-api` | | Use YouTube Data API instead of RSS feed (requires `youtube_api_key` in config) |
 | `--log` | | Enable continuous file logging to `skytube.log` |
+| `--no-cache` | | Disable caching for YouTube API requests (requires `--use-api`) |
 
 ## How It Works
 
@@ -193,6 +208,11 @@ skytube/
 - **HTTP 404** - Verify your channel ID is correct (must start with `UC`)
 - **HTTP 429** - You've hit the API rate limit; wait and try again
 
+### Videos not detected for hours
+- YouTube API may cache responses for several hours
+- **Solution**: Use the `--no-cache` flag with `--use-api` to bypass caching
+- This is particularly useful when running as a systemd service
+
 ## Running as a Service
 
 For continuous operation, consider running the script as a system service:
@@ -209,7 +229,7 @@ After=network.target
 Type=simple
 User=your-username
 WorkingDirectory=/path/to/skytube
-ExecStart=/usr/bin/python3 skytube.py
+ExecStart=/usr/bin/python3 skytube.py --use-api --log --no-cache
 Restart=always
 RestartSec=10
 
