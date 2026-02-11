@@ -7,7 +7,7 @@ Automatically monitor your YouTube channel for new videos and post them to Blues
 ## Features
 
 - 🔄 **Automatic Monitoring** - Continuously monitors your YouTube channel for new uploads
-- 📡 **Dual Video Source** - Fetch videos via RSS feed (default) or the YouTube Data API (`--use-api`)
+- 📡 **Dual Video Source** - Fetch videos via RSS feed (default), YouTube Data API (`--use-api`), or both (`--dual-mode`)
 - 🖼️ **Rich Preview Cards** - Posts include video thumbnails and proper link embeds
 - 💾 **Persistent Database** - Remembers which videos have been posted, survives restarts
 - ⚙️ **Easy Configuration** - Simple YAML config file with helpful comments
@@ -15,6 +15,7 @@ Automatically monitor your YouTube channel for new videos and post them to Blues
 - 📝 **File Logging** - Optional persistent log file for diagnostics (`--log`)
 - 🚫 **No Cache Mode** - Bypass API caching to get fresh data (`--no-cache`)
 - 🎨 **Colored Output** - Clear, color-coded terminal output for easy monitoring
+- 🎯 **Dual Mode** - Query both RSS and API simultaneously for maximum reliability (`--dual-mode`)
 
 ## Requirements
 
@@ -156,6 +157,38 @@ python skytube.py --log --use-api --no-cache
 
 This adds cache-control headers and unique timestamps to each API request, preventing YouTube's servers from returning stale cached responses. Particularly useful when running as a systemd service where the process stays active for long periods.
 
+### Dual Mode
+
+Query both RSS feed and YouTube Data API simultaneously for maximum reliability:
+
+```bash
+# Dual mode (queries both RSS and API)
+python skytube.py --dual-mode
+
+# Dual mode with cache disabled for API
+python skytube.py --dual-mode --no-cache
+
+# Dual mode with file logging
+python skytube.py --dual-mode --log --no-cache
+```
+
+**Requirements:**
+- Requires `youtube_api_key` to be set in your config file
+- API metadata is preferred when a video is found in both sources
+
+**Configuration:**
+Add to your `config.yaml`:
+```yaml
+# Which source to prefer when video found in both (api or rss)
+dual_mode_preference: "api"
+```
+
+This is the most reliable mode for production use as it:
+- Posts videos found in **either** RSS or API
+- Uses API metadata exclusively when video is in both sources
+- Continues working if one source fails temporarily
+- Maximizes chance of detecting new videos quickly
+
 ## Command Line Options
 
 | Option | Short | Description |
@@ -163,12 +196,13 @@ This adds cache-control headers and unique timestamps to each API request, preve
 | `--config` | `-c` | Path to the configuration YAML file (default: `config.yaml`) |
 | `--build-db` | | Build the database of seen videos without posting |
 | `--use-api` | | Use YouTube Data API instead of RSS feed (requires `youtube_api_key` in config) |
+| `--dual-mode` | | Use both RSS and API simultaneously for maximum reliability (requires `youtube_api_key`) |
 | `--log` | | Enable continuous file logging to `skytube.log` |
-| `--no-cache` | | Disable caching for YouTube API requests (requires `--use-api`) |
+| `--no-cache` | | Disable caching for YouTube API requests |
 
 ## How It Works
 
-1. **Fetch Videos** - The script fetches your YouTube channel's videos via RSS feed or YouTube Data API
+1. **Fetch Videos** - The script fetches your YouTube channel's videos via RSS feed, YouTube Data API, or both (dual mode)
 2. **Check for New Videos** - Compares entries against the database of seen videos
 3. **Download Thumbnail** - Gets the highest quality thumbnail available (maxres → hq → mq)
 4. **Post to Bluesky** - Creates a post with the video title, link, and thumbnail embed

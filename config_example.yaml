@@ -27,3 +27,13 @@ youtube_api_key: "EXAMPPLE"
 
 # Maximum results per API request (optional, default: 15)
 api_max_results: 3
+
+# =============================================
+# Dual Mode Configuration (Optional)
+# =============================================
+# When using --dual-mode flag, both RSS and API are queried simultaneously.
+# This setting determines which source's metadata is preferred when a video
+# is found in both sources. Options: "api" or "rss"
+# Default is "api" (API metadata is preferred)
+#
+dual_mode_preference: "api"

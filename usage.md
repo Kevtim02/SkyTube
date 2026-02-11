@@ -9,11 +9,14 @@ This Python script monitors a YouTube channel for new videos (via RSS feed or Yo
 - [Usage](#usage)
   - [Normal Mode](#normal-mode)
   - [YouTube API Mode](#youtube-api-mode)
+  - [Dual Mode](#dual-mode)
   - [Database Build Mode](#database-build-mode)
   - [File Logging](#file-logging)
+  - [No Cache Mode](#no-cache-mode)
 - [Configuration](#configuration)
   - [Configuration Options](#configuration-options)
   - [YouTube API Configuration (Optional)](#youtube-api-configuration-optional)
+  - [Dual Mode Configuration (Optional)](#dual-mode-configuration-optional)
   - [Finding Your YouTube Channel ID](#finding-your-youtube-channel-id)
   - [Creating a Bluesky App Password](#creating-a-bluesky-app-password)
 - [Command Line Arguments](#command-line-arguments)
@@ -33,13 +36,14 @@ This Python script monitors a YouTube channel for new videos (via RSS feed or Yo
 
 ## Features
 - **Automatic Monitoring**: Continuously monitors your YouTube channel for new videos.
-- **Dual Video Source**: Fetch videos via RSS feed (default) or the YouTube Data API (`--use-api`) for more reliable results.
+- **Dual Video Source**: Fetch videos via RSS feed (default), YouTube Data API (`--use-api`), or both (`--dual-mode`) for maximum reliability.
 - **Rich Preview Cards**: Posts to Bluesky include a link preview card with the video thumbnail, title, and description.
 - **Thumbnail Support**: Automatically downloads and uploads video thumbnails in the highest available quality (maxres → hq → mq).
 - **Database Persistence**: Tracks posted videos in a JSON file to prevent duplicate posts across restarts.
 - **Database Build Mode**: Register existing videos without posting, so only future uploads get announced.
 - **File Logging**: Optional persistent log file (`skytube.log`) via the `--log` flag for diagnostics and record keeping.
 - **No Cache Mode**: Disable caching for API requests via `--no-cache` flag to get fresh data and bypass stale cached responses.
+- **Dual Mode**: Query both RSS and API simultaneously - posts videos found in either source, with configurable preference for duplicate handling.
 - **YAML Configuration**: Easy-to-edit configuration file with helpful comments.
 - **Colored Output**: Color-coded terminal output for errors (red), success (green), warnings (yellow), and info (blue/cyan).
 - **Interactive Setup**: Prompts to create an example config file if none exists.
@@ -93,6 +97,33 @@ python skytube.py --use-api
 ```
 
 This mode requires `youtube_api_key` to be set in your config file. The API is more reliable than RSS and supports fetching more than the 15 most recent videos.
+
+### Dual Mode
+
+Query both RSS feed and YouTube Data API simultaneously for maximum reliability:
+
+```bash
+# Dual mode - checks both RSS and API
+python skytube.py --dual-mode
+
+# Dual mode with cache disabled for API requests
+python skytube.py --dual-mode --no-cache
+
+# Dual mode with file logging
+python skytube.py --dual-mode --log
+```
+
+**Features:**
+- Posts videos found in **either** RSS or API
+- API metadata is preferred when a video is found in both sources (configurable)
+- Continues working if one source fails temporarily
+- Maximizes chance of detecting new videos quickly
+
+**Requirements:**
+- Requires `youtube_api_key` to be set in your config file
+- See [Dual Mode Configuration](#dual-mode-configuration-optional) for preference settings
+
+This is the recommended mode for production use when running as a systemd service.
 
 ### Database Build Mode
 To register all existing videos without posting (useful for initial setup):
@@ -207,6 +238,23 @@ To obtain a YouTube API key:
 3. Enable the **YouTube Data API v3**
 4. Create an API key under **Credentials**
 
+### Dual Mode Configuration (Optional)
+
+When using `--dual-mode`, you can configure which source's metadata is preferred when a video is found in both RSS and API:
+
+```yaml
+# Which source to prefer when video found in both sources
+# Options: "api" or "rss"
+# Default: "api" (API metadata is preferred)
+dual_mode_preference: "api"
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `dual_mode_preference` | Which source to prefer when video found in both RSS and API ("api" or "rss") | `api` |
+
+**Note:** This setting only affects which metadata is used when a video exists in both sources. The video will be posted regardless of which source it came from.
+
 ### Finding Your YouTube Channel ID
 
 1. Go to your YouTube channel page
@@ -234,8 +282,9 @@ To obtain a YouTube API key:
 | `--config` | `-c` | Path to the configuration YAML file (default: `config.yaml`) |
 | `--build-db` | - | Build/rebuild the database of seen videos without posting |
 | `--use-api` | - | Use YouTube Data API instead of RSS feed (requires `youtube_api_key` in config) |
+| `--dual-mode` | - | Use both RSS and API simultaneously (requires `youtube_api_key` in config) |
 | `--log` | - | Enable continuous file logging to `skytube.log` in the current directory |
-| `--no-cache` | - | Disable caching for YouTube API requests (requires `--use-api`) |
+| `--no-cache` | - | Disable caching for YouTube API requests |
 | `--help` | `-h` | Show help message and exit |
 
 ### Examples
@@ -273,6 +322,15 @@ python skytube.py --use-api --no-cache
 
 # File logging with API mode and no cache
 python skytube.py --log --use-api --no-cache
+
+# Dual mode - use both RSS and API
+python skytube.py --dual-mode
+
+# Dual mode with no cache and file logging
+python skytube.py --dual-mode --no-cache --log
+
+# Build database using dual mode
+python skytube.py --dual-mode --build-db
 ```
 
 ## Script Details
@@ -281,7 +339,7 @@ python skytube.py --log --use-api --no-cache
 
 1. **Startup**: The script loads configuration from the YAML file and validates required settings.
 
-2. **Feed Monitoring**: Every `check_interval_seconds`, the script fetches the latest videos from the YouTube channel using either the RSS feed (default) or the YouTube Data API (`--use-api`).
+2. **Feed Monitoring**: Every `check_interval_seconds`, the script fetches the latest videos from the YouTube channel using either the RSS feed (default), the YouTube Data API (`--use-api`), or both (`--dual-mode`).
 
 3. **Duplicate Detection**: Each video's ID is compared against the stored database (`seen_videos_file`). Only new videos trigger a post.
 

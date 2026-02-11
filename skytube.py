@@ -236,6 +236,16 @@ seen_videos_file: "youtube_bluesky_seen.json"
 # Maximum number of videos to fetch per API request (1-50)
 # Only used when --use-api is enabled
 # api_max_results: 15
+
+# =============================================
+# Dual Mode Configuration (Optional)
+# =============================================
+# When using --dual-mode flag, both RSS and API are queried simultaneously.
+# This setting determines which source's metadata is preferred when a video
+# is found in both sources. Options: "api" or "rss"
+# Default is "api" (API metadata is preferred)
+#
+# dual_mode_preference: "api"
 """
 
 # Global config variable that stores the loaded configuration
@@ -250,6 +260,10 @@ use_youtube_api = False
 # Global variable to track whether to disable caching
 # Set by command line argument --no-cache
 no_cache = False
+
+# Global variable to track whether to use dual mode (RSS + API)
+# Set by command line argument --dual-mode
+dual_mode = False
 
 
 # ============================================================
@@ -1000,10 +1014,128 @@ def get_videos():
         A list of video entries from the feed/API, or empty list on error
     """
     log_debug(f"Fetching videos using {'YouTube API' if use_youtube_api else 'RSS feed'}")
-    if use_youtube_api:
+    if dual_mode:
+        return get_videos_dual()
+    elif use_youtube_api:
         return get_youtube_feed_api()
     else:
         return get_youtube_feed()
+
+
+def get_videos_dual():
+    """
+    Fetches videos from both RSS feed and YouTube Data API simultaneously.
+    
+    This function queries both sources and merges the results, using video ID
+    as the unique key to prevent duplicates. API metadata is preferred when
+    a video is found in both sources (based on dual_mode_preference config).
+    
+    Edge cases handled:
+    - Duplicate videos: API version is kept (configurable via dual_mode_preference)
+    - One source fails: Warning is logged, continues with successful source
+    - No API key: Returns RSS results only with a warning
+    
+    Returns:
+        A merged list of video entries from both sources (duplicates removed),
+        or empty list if both sources fail
+    """
+    log_message("Fetching videos using dual mode (RSS + API)...", Colors.CYAN)
+
+    # Determine preference for duplicate handling
+    # API is preferred by default, but can be configured via dual_mode_preference
+    preference = config.get("dual_mode_preference", "api").lower()
+    if preference not in ["api", "rss"]:
+        log_warning(f"Invalid dual_mode_preference '{preference}', using 'api'")
+        preference = "api"
+
+    log_debug(f"Dual mode preference: {preference} (used when video found in both sources)")
+
+    # Fetch from both sources
+    rss_entries = []
+    api_entries = []
+
+    # Fetch RSS feed
+    try:
+        log_message("Fetching from RSS feed...")
+        rss_entries = get_youtube_feed()
+        log_debug(f"RSS feed returned {len(rss_entries)} videos")
+    except Exception as e:
+        log_warning(f"RSS feed fetch failed: {e}")
+        log_debug(f"RSS exception type: {type(e).__name__}")
+
+    # Fetch from API
+    try:
+        # Check if API key is configured
+        api_key = config.get("youtube_api_key", "")
+        if not api_key or api_key == "YOUR_YOUTUBE_API_KEY_HERE":
+            log_warning("YouTube API key not configured - cannot use API in dual mode")
+            log_warning("Consider adding youtube_api_key to config.yaml or use --use-api flag only")
+        else:
+            log_message("Fetching from YouTube API...")
+            api_entries = get_youtube_feed_api()
+            log_debug(f"API returned {len(api_entries)} videos")
+    except Exception as e:
+        log_warning(f"YouTube API fetch failed: {e}")
+        log_debug(f"API exception type: {type(e).__name__}")
+
+    # If both failed, return empty list
+    if not rss_entries and not api_entries:
+        log_error("Both RSS and API feeds failed - no videos to process")
+        return []
+
+    # If only one succeeded, return that
+    if not rss_entries:
+        log_warning("RSS feed returned no entries, using API results only")
+        return api_entries
+    if not api_entries:
+        log_warning("API returned no entries, using RSS results only")
+        return rss_entries
+
+    # Merge results - use dictionary to deduplicate by video ID
+    merged_videos = {}
+    api_preferred = (preference == "api")
+
+    # Process API entries first if API is preferred, otherwise process RSS first
+    if api_preferred:
+        # API preferred: add API entries first, then RSS only for new videos
+        for entry in api_entries:
+            video_id = entry.get("yt_videoid", entry.get("id", ""))
+            if video_id:
+                merged_videos[video_id] = entry
+
+        # Add RSS entries only if not already in merged_videos
+        rss_only_count = 0
+        for entry in rss_entries:
+            video_id = entry.get("yt_videoid", entry.get("id", ""))
+            if video_id and video_id not in merged_videos:
+                merged_videos[video_id] = entry
+                rss_only_count += 1
+
+        log_message(f"Dual mode merge complete: {len(merged_videos)} unique videos "
+                   f"({len(api_entries)} from API, {rss_only_count} RSS-only)", Colors.GREEN)
+    else:
+        # RSS preferred: add RSS entries first, then API only for new videos
+        for entry in rss_entries:
+            video_id = entry.get("yt_videoid", entry.get("id", ""))
+            if video_id:
+                merged_videos[video_id] = entry
+
+        # Add API entries only if not already in merged_videos
+        api_only_count = 0
+        for entry in api_entries:
+            video_id = entry.get("yt_videoid", entry.get("id", ""))
+            if video_id and video_id not in merged_videos:
+                merged_videos[video_id] = entry
+                api_only_count += 1
+
+        log_message(f"Dual mode merge complete: {len(merged_videos)} unique videos "
+                   f"({len(rss_entries)} from RSS, {api_only_count} API-only)", Colors.GREEN)
+
+    # Convert dict values back to list
+    result = list(merged_videos.values())
+    log_debug(f"Dual mode returning {len(result)} merged video entries")
+
+    return result
 
 
 def extract_video_id(video_url):
@@ -1292,7 +1424,10 @@ def build_database():
     # Display header for database build mode
     log_message("=" * 50)
     log_message("DATABASE BUILD MODE", Colors.CYAN)
-    if use_youtube_api:
+    if dual_mode:
+        preference = config.get("dual_mode_preference", "api")
+        log_message(f"Using Dual Mode (RSS + API, {preference} preferred)...")
+    elif use_youtube_api:
         log_message("Using YouTube Data API to fetch videos...")
     else:
         log_message("Using RSS feed to fetch videos...")
@@ -1465,6 +1600,8 @@ Examples:
   python youtube_to_bluesky.py --log                        # Enable file logging to skytube.log
   python youtube_to_bluesky.py --log --use-api              # File logging with API mode
   python youtube_to_bluesky.py --use-api --no-cache         # Disable API caching (fresh data)
+  python youtube_to_bluesky.py --dual-mode                  # Use both RSS and API
+  python youtube_to_bluesky.py --dual-mode --no-cache       # Dual mode with no caching
         """
     )
     
@@ -1513,6 +1650,17 @@ Examples:
         help="Disable caching for YouTube API requests by adding cache-control headers "
              "and unique timestamps. Useful when the API returns stale data."
     )
+
+    # --dual-mode flag: use both RSS and API for maximum reliability
+    # Fetches from both sources and posts videos found in either
+    # Requires youtube_api_key to be configured
+    parser.add_argument(
+        "--dual-mode",
+        action="store_true",
+        help="Use both RSS feed and YouTube Data API simultaneously. "
+             "Posts videos found in either source. API metadata is preferred when "
+             "a video is found in both. Requires 'youtube_api_key' in config."
+    )
     
     # Parse and return the arguments
     return parser.parse_args()
@@ -1537,13 +1685,15 @@ def main():
     global use_youtube_api
     global file_logger
     global no_cache
-    
-    # Parse command line arguments (--config, --build-db, --use-api, --log, --no-cache)
+    global dual_mode
+
+    # Parse command line arguments (--config, --build-db, --use-api, --log, --no-cache, --dual-mode)
     args = parse_arguments()
-    
+
     # Set global flags from command line arguments
     use_youtube_api = args.use_api
     no_cache = args.no_cache
+    dual_mode = args.dual_mode
 
     # ==========================================
     # Set up file logging if --log flag was passed
@@ -1571,11 +1721,11 @@ def main():
             log_error("youtube_channel_id is required in config file")
             sys.exit(1)
         
-        # If using API mode, also validate API key
-        if use_youtube_api:
+        # If using API mode or dual mode, also validate API key
+        if use_youtube_api or dual_mode:
             api_key = config.get("youtube_api_key", "")
             if not api_key or api_key == "YOUR_YOUTUBE_API_KEY_HERE":
-                log_error("youtube_api_key is required when using --use-api flag")
+                log_error("youtube_api_key is required when using --use-api or --dual-mode flag")
                 print()
                 print(f"{Colors.YELLOW}  To get a YouTube API key:{Colors.RESET}")
                 print(f"{Colors.YELLOW}    1. Go to https://console.cloud.google.com/apis/credentials{Colors.RESET}")
@@ -1586,8 +1736,8 @@ def main():
                 sys.exit(1)
     else:
         # For normal operation, we need all credentials
-        # Pass require_api_key=True if using API mode
-        if not validate_config(config, require_api_key=use_youtube_api):
+        # Pass require_api_key=True if using API mode or dual mode
+        if not validate_config(config, require_api_key=(use_youtube_api or dual_mode)):
             sys.exit(1)
     
     # Check if we're in database building mode
@@ -1604,7 +1754,10 @@ def main():
     log_message("=" * 50)
     log_message("YouTube to Bluesky Auto-Poster starting...", Colors.CYAN)
     log_message(f"Monitoring channel: {config.get('youtube_channel_id')}")
-    if use_youtube_api:
+    if dual_mode:
+        preference = config.get("dual_mode_preference", "api")
+        log_message(f"Video source: Dual Mode (RSS + API, {preference} preferred)", Colors.BLUE)
+    elif use_youtube_api:
         log_message("Video source: YouTube Data API", Colors.BLUE)
     else:
         log_message("Video source: RSS Feed", Colors.BLUE)
